@@ -9,8 +9,10 @@ import pytorch_lightning as pl
 
 class RNNDynamics(pl.LightningModule):
 
-    def __init__(self, data_dim, hidden_size):
+    def __init__(self, data_dim, hidden_size, lr=1e-3, wd=0.01):
         super().__init__()
+        self.lr = lr
+        self.wd = wd
         self.d = data_dim
         self.n = hidden_size
         # self.t = seq_len
@@ -24,17 +26,17 @@ class RNNDynamics(pl.LightningModule):
         h0s = self.w_in(x0s).reshape((1, bz, self.n))
         hs, _ = self.gru(us, h0s)
         ys = self.w_out(hs)
-        return ys
+        return hs, ys
 
     def training_step(self, batch, _):
         x0s, xs = batch
-        ys = self(x0s, xs.shape[1])
+        _, ys = self(x0s, xs.shape[1])
         loss = F.mse_loss(ys, xs)
         self.log("loss", loss)
         return loss
 
     def configure_optimizers(self):
-        optimizer = torch.optim.Adam(self.parameters(), lr=1e-3)
+        optimizer = torch.optim.Adam(self.parameters(), lr=self.lr, weight_decay=self.wd)
         scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer)
         return {"optimizer": optimizer, "scheduler": scheduler}
 
@@ -45,7 +47,7 @@ def train(state_size, batch_size):
     model = RNNDynamics(dim, state_size)
     datamodule = data.ODEDataModule(data.vanderpol, dim, 2, batch_size)
 
-    trainer = pl.Trainer(max_epochs=100)
+    trainer = pl.Trainer(max_epochs=100, accelerator="cpu")
     trainer.fit(model, datamodule)
 
 
